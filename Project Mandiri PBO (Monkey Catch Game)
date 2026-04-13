@@ -1,0 +1,202 @@
+import pygame
+import random
+import sys
+import os
+
+pygame.init()
+
+# ======================
+#         SETUP
+# ======================
+WIDTH, HEIGHT = 600, 700
+screen = pygame.display.set_mode((WIDTH, HEIGHT))
+pygame.display.set_caption("Monkey Catch Game")
+
+clock = pygame.time.Clock()
+font = pygame.font.SysFont(None, 36)
+
+# ======================
+#      LOAD IMAGE 
+# ======================
+BASE_DIR = os.path.dirname(__file__)
+
+def load_img(name, size, color=(255,0,0)):
+    path = os.path.join(BASE_DIR, name)
+    try:
+        img = pygame.image.load(path).convert_alpha()
+        return pygame.transform.scale(img, size)
+    except:
+        surface = pygame.Surface(size)
+        surface.fill(color)
+        return surface
+
+# ======================
+#      LOAD ASSET
+# ======================
+monkey_img = load_img("monyet.png", (140, 140), (0,255,0))
+bg = load_img("background.png", (WIDTH, HEIGHT), (0,0,0))
+
+fruit_data = {
+    "banana": {"img": load_img("banana.png", (60,60),(255,255,0)), "score":5, "weight":50},
+    "apple": {"img": load_img("apple.png", (60,60),(255,0,0)), "score":3, "weight":50},
+    "strawberry": {"img": load_img("strawberry.png", (70,70),(255,100,100)), "score":4, "weight":50},
+    "kiwi": {"img": load_img("kiwi.png", (50,50),(0,255,0)), "score":4, "weight":50},
+    "grape": {"img": load_img("grape.png", (70,70),(150,0,150)), "score":3, "weight":50},
+    "pineapple": {"img": load_img("pineapple.png", (80,80),(255,200,0)), "score":2, "weight":50},
+    "lemon": {"img": load_img("lemon.png", (60,60),(255,255,100)), "score":2, "weight":50},
+    "watermelon": {"img": load_img("watermelon.png", (60,60),(0,200,0)), "score":4, "weight":50},
+}
+
+bomb_img = load_img("bomb.png", (90,90),(50,50,50))
+
+# ======================
+#      BASE CLASS
+# ======================
+class GameObject:
+    def __init__(self, x, y, image):
+        self.image = image
+        self.rect = self.image.get_rect(topleft=(x, y))
+
+    def draw(self, offset=(0,0)):
+        screen.blit(self.image, (self.rect.x + offset[0], self.rect.y + offset[1]))
+
+# ======================
+#        PLAYER
+# ======================
+class Player(GameObject):
+    def __init__(self):
+        super().__init__(WIDTH//2 - 70, HEIGHT - monkey_img.get_height() - 60, monkey_img)
+        self.speed = 7
+
+    def move(self, keys):
+        if keys[pygame.K_LEFT] and self.rect.left > 0:
+            self.rect.x -= self.speed
+        if keys[pygame.K_RIGHT] and self.rect.right < WIDTH:
+            self.rect.x += self.speed
+
+# ======================
+#         ITEM
+# ======================
+class Item(GameObject):
+    def __init__(self, x, image, speed):
+        super().__init__(x, 0, image)
+        self.speed = speed
+
+    def move(self):
+        self.rect.y += self.speed
+
+class Fruit(Item):
+    def __init__(self, x, data):
+        super().__init__(x, data["img"], 4)
+        self.score = data["score"]
+
+class Bomb(Item):
+    def __init__(self, x):
+        super().__init__(x, bomb_img, 5)
+
+# ======================
+#     GAME LOOP
+# ======================
+def game():
+    player = Player()
+    items = []
+
+    score = 0
+    lives = 3
+    max_score = 150
+    shake = 0
+
+    while True:
+        clock.tick(60)
+
+        # ======================
+        #     SCREEN SHAKE
+        # ======================
+        offset_x, offset_y = 0, 0
+        if shake > 0:
+            offset_x = random.randint(-8, 8)
+            offset_y = random.randint(-8, 8)
+            shake -= 1
+
+        screen.blit(bg, (offset_x, offset_y))
+
+        # EVENT
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+
+        keys = pygame.key.get_pressed()
+        player.move(keys)
+
+        # ======================
+        #        SPAWN
+        # ======================
+        if len(items) < 6 and random.randint(1, 35) == 1:
+            x = random.randint(0, WIDTH - 60)
+
+            names = list(fruit_data.keys())
+            weights = [fruit_data[n]["weight"] for n in names]
+
+            names.append("bomb")
+            weights.append(50)
+
+            choice = random.choices(names, weights=weights)[0]
+
+            if choice == "bomb":
+                items.append(Bomb(x))
+            else:
+                items.append(Fruit(x, fruit_data[choice]))
+
+        # ======================
+        # UPDATE
+        # ======================
+        for item in items[:]:
+            item.move()
+
+            if item.rect.colliderect(player.rect):
+                if isinstance(item, Fruit):
+                    score += item.score
+                else:
+                    lives -= 1
+                    shake = 15  # efek getar
+                items.remove(item)
+
+            elif item.rect.top > HEIGHT:
+                items.remove(item)
+
+        # ======================
+        # DRAW
+        # ======================
+        player.draw((offset_x, offset_y))
+        for item in items:
+            item.draw((offset_x, offset_y))
+
+        screen.blit(font.render(f"Score: {score}", True, (255,255,255)), (10,10))
+        screen.blit(font.render(f"Lives: {lives}", True, (255,255,255)), (10,40))
+
+        # GAME OVER
+        if lives <= 0:
+            big_font = pygame.font.SysFont(None, 80)
+            over_text = big_font.render("GAME OVER", True, (255,0,0))
+            over_rect = over_text.get_rect(center=(WIDTH//2, HEIGHT//2))
+            screen.blit(over_text, over_rect)
+            pygame.display.update()
+            pygame.time.delay(3000)
+            pygame.quit()
+            sys.exit()
+
+        # WIN
+        if score >= max_score:
+            big_font = pygame.font.SysFont(None, 80)
+            win_text = big_font.render("YOU WIN!", True, (0,255,0))
+            win_rect = win_text.get_rect(center=(WIDTH//2, HEIGHT//2))
+            screen.blit(win_text, win_rect)
+            pygame.display.update()
+            pygame.time.delay(3000)
+            pygame.quit()
+            sys.exit()
+
+        pygame.display.update()
+
+game()
